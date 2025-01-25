@@ -2,18 +2,34 @@ package controllers
 
 import (
 	"encoding/json"
-	"net/http"
 	"gloriusaiapi/services"
+	"io"
+	"net/http"
 )
 
+type SetModelRequest struct {
+	Name string `json:"name"`
+}
+
 func SetModel(w http.ResponseWriter, r *http.Request) {
-	modelName := r.URL.Query().Get("name")
-	if modelName == "" {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req SetModelRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" {
 		http.Error(w, "Model name is required", http.StatusBadRequest)
 		return
 	}
 
-	err := services.ActivateModel(modelName)
+	err = services.ActivateModel(req.Name)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -24,25 +40,35 @@ func SetModel(w http.ResponseWriter, r *http.Request) {
 }
 
 func SendMessage(w http.ResponseWriter, r *http.Request) {
-	var request struct {
-		Message string `json:"message"`
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body: "+err.Error(), http.StatusBadRequest)
+		return
 	}
+	defer r.Body.Close()
 
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+	var req services.SendMessageRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "Invalid JSON request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	response, err := services.SendMessageToModel(request.Message)
+	if req.Stream {
+		_, err := services.SendMessageToModel(body, w)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	response, err := services.SendMessageToModel(body, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"response": response,
-	})
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(response))
 }
 
 func GetAllModels(w http.ResponseWriter, r *http.Request) {

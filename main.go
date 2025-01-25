@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"gloriusaiapi/config"
 	"gloriusaiapi/migrations"
 	"gloriusaiapi/routers"
@@ -14,5 +15,9 @@ func main() {
 
 	router := routers.SetupRouter()
 
-	log.Fatal(http.ListenAndServe(":8080", router))
+	port := ":8080"
+
+	fmt.Printf("Server is running on http://localhost%s\n", port)
+
+	log.Fatal(http.ListenAndServe(port, router))
 }
